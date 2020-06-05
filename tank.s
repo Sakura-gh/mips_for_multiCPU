@@ -3,14 +3,28 @@
 
 # ######################################################
 # 全局变量：
+# $k0=0xFFFFFF00 GPIO地址
+# $k1=0xFFFFFF04 Counter地址
 # $s7=0xFFFFD000 ps2地址
 # $s6=0x000C2000 vga地址
 # $sp=0x0000FFFF 堆栈指针地址
 # $t0=当前点地址
 # $s0=当前点的颜色
+# $t9=是否生成新的障碍物的flag, 当$t9=0x00020000时生成新的障碍物
 # ######################################################
 
+.data 0x00
+num:        .word   0x0     # 记录障碍物的个数
+obstacle:   .word   0x0     # 记录障碍物的(x,y)地址，其中前16位是x，后16位是y
+
+
+.text 0x40
 ori $sp, $zero, 0xFFFF      # 先给$sp一个地址，避免溢出
+
+lui $k0, 0xFFFF             # $k0 = 0xFFFFFF00 GPIO地址
+ori $k0, $k0, 0xFF00        
+
+addi $k1, $k0, 4            # $k1 = 0xFFFFFF04 Counter地址
 
 # li $s7, 0xFFFFD000
 lui $s7, 0xFFFF             # $s7 = 0xFFFFD000 ps2地址
@@ -19,9 +33,14 @@ ori $s7, $s7, 0xD000
 lui $s6, 0x000C       
 ori $s6, $s6, 0x2000        # $s6 = vram_graph = 0x000C2000 vga地址
 
+add $t9, $zero, $zero       # flag初始化为0
+
 jal init_graph              # 先初始化界面
 
+jal init_counter            # 初始化计数器
+
 read_kbd:
+jal check_counter           # 检查计数器是否要重新赋值
 jal update_graph            # 每次读取ps2前先更新一下vga画面，主要是更新障碍物的位置
 jal judge                   # 判断更新完位置的障碍物是否与tank相撞
 addi $v0, $v0, -1           # 如果返回值为1，则减一后为0
@@ -57,6 +76,26 @@ beq  $t2, $s1, shot         # if $t2 == "o", then tank shot ballet
 
 j read_kbd                  # 跳回重新读取ps2
 
+init_counter:
+addi $t1, $zero, 600
+sll  $t1, $t1, 8            # 600左移8位:0x0258->0x00025800，方便计数
+add $gp, $t1, $zero
+sw   $t1, 0($k1)            # 给计数器一个初始值600*4,是障碍物出现的x轴范围*4
+jr $ra
+
+# 检查计数器是否要重新赋值
+check_counter:
+addi $sp, $sp, -4
+sw   $ra, 0($sp)
+lw   $t8, 0($k0)            # 读取GPIO
+lui  $t1, 0x8000     
+and  $t2, $t8, $t1          # 取出GPIO端口最高位counter0_out信号
+beq  $t2, $zero, continue   # 如果计数器还未计满数字，则不用重新给计数器赋值
+jal init_counter            # 如果计数器已经计完一遍数字，则重新开始计数
+continue:
+lw   $ra, 0($sp)
+addi $sp, $sp, 4
+jr $ra
 
 # 初始化界面
 init_graph:
@@ -117,7 +156,7 @@ jr $ra
 
 # 绘制障碍物
 # input: $a0=x, $a1=y, 其中(x,y)为obstacle最上方中心点位置
-obstacle:
+draw_obstacle:
 addi $sp, $sp, -12
 sw   $a0, 8($sp)
 sw   $a1, 4($sp)
@@ -125,7 +164,7 @@ sw   $ra, 0($sp)
 add  $s1, $a1, $zero        # 保存input的(x,y)信息到($s2,$s1)
 add  $s2, $a0, $zero 
 addi $a0, $s2, -20          # 左上角($s2-20,$s1)
-addi $a1, $s1, $zero
+add  $a1, $s1, $zero
 addi $a2, $s2, 20           # 右下角($s2+20,$s1+40)
 addi $a3, $s1, 40
 jal draw_rectangle
@@ -197,6 +236,21 @@ addi $sp, $sp, 4
 jr   $ra
 
 update_graph:
+addi $sp, $sp, -4
+sw   $ra, 0($sp)
+addi $t9, $t9, 1            # $t9=flag++
+lui  $t1, 0x0002            
+bne  $t9, $t1, update_old   # 如果flag!=0x00020000，则只更新旧的障碍物，不生成新的障碍物
+add  $t9, $zero, $zero      # 如果flag=0x00020000，则生成新的障碍物，且flag清零
+lw   $t1, 0($k1)
+srl  $t1, $t1, 8            # 获取随机生成的x坐标
+add  $a0, $t1, $zero        # ($t1,0)
+add  $a1, $zero, $zero
+jal draw_obstacle
+update_old:
+
+lw   $ra, 0($sp)
+addi $sp, $sp, 4
 jr $ra
 
 judge:
