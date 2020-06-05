@@ -115,6 +115,25 @@ lw   $a0, 8($sp)
 addi $sp, $sp, 12
 jr $ra
 
+# 绘制障碍物
+# input: $a0=x, $a1=y, 其中(x,y)为obstacle最上方中心点位置
+obstacle:
+addi $sp, $sp, -12
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+add  $s1, $a1, $zero        # 保存input的(x,y)信息到($s2,$s1)
+add  $s2, $a0, $zero 
+addi $a0, $s2, -20          # 左上角($s2-20,$s1)
+addi $a1, $s1, $zero
+addi $a2, $s2, 20           # 右下角($s2+20,$s1+40)
+addi $a3, $s1, 40
+jal draw_rectangle
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+addi $sp, $sp, 12
+jr $ra
 
 # 画一个长方形(只会改变这个长方形范围内的像素值)
 # input ($a0,$a1)=左上角坐标， ($a2,$a3)=右下角坐标
