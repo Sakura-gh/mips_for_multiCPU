@@ -60,96 +60,122 @@ j read_kbd                  # 跳回重新读取ps2
 
 # 初始化界面
 init_graph:
+addi $sp, $sp, -4
+sw   $ra, 0($sp)
 add  $t0, $zero, $s6        # $t0为全局变量，是当前点的地址，初始化为第一个点的地址
 add  $t1, $zero, $zero      # $t1表示当前扫描到的y坐标
 add  $t2, $zero, $zero      # $t2表示当前扫描到的x坐标
-loop1_init:                 # 每一行的遍历
+loop_y_init:                # 每一行的遍历
 slti $t3, $t1, 480          # 如果$t1=y>=480，则整个屏幕都已经遍历完了，结束扫描
-beq  $t3, $zero, end1_init        
+beq  $t3, $zero, end_y_init        
 add  $t2, $zero, $zero      # $t2=x重新初始化为当前行的第一个点坐标
-loop2_init:  
+loop_x_init:  
 slti $t3, $t2, 640          # 如果$t2=x>=640，则当前行已经遍历完了，切换到下一行
-beq  $t3, $zero, end2_init
-lui  $s0, 0x00F0            # 给$s0颜色赋值,点为红色，注意只有前16位才是rgb有效位
-sw   $s0, 0($t0)            # 把$s0的前16位rgb放到当前点的地址上，后16位全0，不作使用
+beq  $t3, $zero, end_x_init
+addi $s0, $zero, 0x00F0     # 给$s0颜色赋值,点为绿色，注意只有前16位才是rgb有效位
+sh   $s0, 0($t0)            # 把$s0的前16位rgb放到当前点的地址上，后16位全0，不作使用
 addi $t0, $t0, 2            # offset+=2，每个点占2byte
 addi $t2, $t2, 1            # $t2=x++
-j loop2_init                # 继续遍历该行的剩余点
-end2_init:
+j loop_x_init               # 继续遍历该行的剩余点
+end_x_init:
 addi $t1, $t1, 1            # $t1=y++
-j loop1_init                # 继续遍历下一行
-end1_init:
+j loop_y_init               # 继续遍历下一行
+end_y_init:
 addi $a0, $zero, 320        # 在初始位置(320,479)绘制tank
 addi $a1, $zero, 479
 jal tank
-jr $ra                      # 遍历完成，返回地址
+lw   $ra, 0($sp)
+addi $sp, $sp, 4
+jr   $ra                    # 遍历完成，返回地址
 
 
+# 绘制tank
 # input: $a0=x, $a1=y, 其中(x,y)为tank最下方中心点位置
 tank:
-add  $t1, $a1, $zero        # 保存input的(x,y)信息
-add  $t2, $a0, $zero
+addi $sp, $sp, -12
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+add  $s1, $a1, $zero        # 保存input的(x,y)信息
+add  $s2, $a0, $zero
 addi $s0, $zero, 0x0F00     # tank为红色
-addi $a0, $t2, -30          # tank body: (x-30,y-20)~(x+30,y)
-addi $a1, $t1, -20
-addi $a2, $t2, 30
-add  $a3, $t1, $zero 
-jal draw_triangle           # 绘制tank body
-addi $a0, $t2, -10          # tank head: (x-10,y-40)~(x+10,y-20)
-addi $a1, $t1, -40
-addi $a2, $t2, 10
-addi $a3, $t1, -20
-jal draw_triangle           # 绘制tank head
+addi $a0, $s2, -30          # tank body: (x-30,y-20)~(x+30,y)
+addi $a1, $s1, -20
+addi $a2, $s2, 30
+add  $a3, $s1, $zero 
+jal draw_rectangle          # 绘制tank body
+addi $a0, $s2, -10          # tank head: (x-10,y-40)~(x+10,y-20)
+addi $a1, $s1, -40
+addi $a2, $s2, 10
+addi $a3, $s1, -20
+jal draw_rectangle          # 绘制tank head
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+addi $sp, $sp, 12
 jr $ra
+
+
+# 画一个长方形(只会改变这个长方形范围内的像素值)
+# input ($a0,$a1)=左上角坐标， ($a2,$a3)=右下角坐标
+# input $s0=长方形颜色
+draw_rectangle:
+addi $sp, $sp, -4
+sw   $ra, 0($sp)
+add  $t0, $zero, $s6        # $t0表示当前点的地址，初始化为第一个点的地址
+add  $t1, $zero, $zero      # $t1表示当前扫描到的y坐标
+add  $t2, $zero, $zero      # $t2表示当前扫描到的x坐标
+loop_y_rec:                 # 每一行的遍历
+slti $t3, $t1, 480          # 如果$t1=y>=480，则整个屏幕都已经遍历完了，结束扫描
+beq  $t3, $zero, end_y_rec        
+add  $t2, $zero, $zero      # $t2=x重新初始化为当前行的第一个点坐标
+loop_x_rec:  
+slti $t3, $t2, 640          # 如果$t2=x>=640，则当前行已经遍历完了，切换到下一行
+beq  $t3, $zero, end_x_rec
+slt  $t3, $t2, $a0          # 如果x的范围不在矩形框内，则直接x++
+bne  $t3, $zero, jump_x_rec
+slt  $t3, $a2, $t2
+bne  $t3, $zero, jump_x_rec
+slt  $t3, $t1, $a1          # 如果y的范围不在矩形框内，则直接x++(放在这个循环内是为了让offset $t0也得到更新)
+bne  $t3, $zero, jump_x_rec
+slt  $t3, $a3, $t1
+bne  $t3, $zero, jump_x_rec
+# addi  $s0, $zero, 0x0F00  # $s0由参数传进 
+sh   $s0, 0($t0)            # 把$s0的前16位rgb放到当前点的地址上，后16位全0，不作使用
+jump_x_rec:
+addi $t0, $t0, 2            # offset+=2，每个点占2byte
+addi $t2, $t2, 1            # $t2=x++
+j loop_x_rec                # 继续遍历该行的剩余点
+end_x_rec:                  # 该行遍历结束
+addi $t1, $t1, 1            # $t1=y++
+j loop_y_rec                # 继续遍历下一行
+end_y_rec:                  # 所有行遍历结束
+lw   $ra, 0($sp)
+addi $sp, $sp, 4
+jr $ra
+
 
 # 将输入的xy坐标转化为实际地址
 # input: (x=$a0,y=$a1)
 # output: $v0=address
 coordinate_to_address:
-add  $t0, $zero, $t6        # $t0是当前点的地址，初始化为第一个点的地址
+addi $sp, $sp, -4
+sw   $ra, 0($sp)
+add  $t0, $zero, $s6        # $t0是当前点的地址，初始化为第一个点的地址
 add  $t1, $zero, $zero      # $t1=y=0
 loop_y:
 slt  $t3, $t1, $a1 
 beq  $t3, $zero, end_y
-addi $t0, $t0, 0x0500       # 640*2=0x0500 每一行640个点，每个点2byte,即更新$t0为下一行第一个点的位置
+addi $t0, $t0, 1280         # 640*2=1280 每一行640个点，每个点2byte,即更新$t0为下一行第一个点的位置
 addi $t1, $t1, 1            # $t1=y++
 j loop_y
 end_y:
-add  $a0, $a0, $a0          # offset_x=2*x
+add  $t0, $t0, $a0          # offset_x=2*x
 add  $t0, $t0, $a0          # $t0已经是(x,y)点的实际地址
 add  $v0, $t0, $zero
+lw   $ra, 0($sp)
+addi $sp, $sp, 4
 jr   $ra
-
-# 画一个长方形(只会改变这个长方形范围内的像素值)
-# input ($a0,$a1)=左上角坐标， ($a2,$a3)=右下角坐标
-# input $s0=长方形颜色
-draw_triangle:
-add  $a0, $a0, $zero        
-add  $a1, $a1, $zero
-jal coordinate_to_address
-add  $t0, $v0, $zero        # 获取左上角点的地址
-add  $t1, $a1, $zero        # $t1=$a1=y起点
-add  $t2, $a0, $zero        # $t2=$a0=x起点s
-loop_y_triangle:
-slt  $t3, $a3, $t1          # 如果y=$t1>$a3(y大于下边界),则跳出循环
-bne  $t3, $zero, end_y_triangle 
-add  $t2, $zero, $a0        # x=$t2=$a0,重新初始化为左边界上的x坐标
-loop_x_triangle:
-slt  $t3, $a2, $t2          # 如果x=$t2>$a2(x大于右边界)，则跳出当前行的循环
-bne  $t3, $zero, end_x_triangle
-sw   $s0, 0($t0)
-addi $t0, $t0, 2            # x_offset+=2
-addi $t2, $t2, 1            # $t2=x++
-j loop_x_triangle
-end_x_triangle:
-addi $t1, $t1, 1            # $t1=y++
-addi $t0, $t0, 1278         # $t0=$t0-2+640*2-($a2-$a0), 将$t0地址更新为下一行左边界上的地址
-add  $t0, $t0, $a0
-sub  $t0, $t0, $a2
-j loop_y_triangle
-end_y_triangle:
-jr $ra
-
 
 update_graph:
 jr $ra
