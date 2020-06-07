@@ -80,7 +80,6 @@ j read_kbd                  # 跳回重新读取ps2
 init_counter:
 addi $t1, $zero, 600
 sll  $t1, $t1, 8            # 600左移8位:0x0258->0x00025800，方便计数，中心点x范围:(20,620)
-add  $gp, $t1, $zero
 sw   $t1, 0($k1)            # 给计数器一个初始值600*4,是障碍物中心点出现的x轴范围*4
 jr   $ra
 
@@ -124,7 +123,7 @@ end_y_init:
 addi $a0, $zero, 320        # 在初始位置(320,479)绘制tank
 addi $a1, $zero, 479        # $a0=x=0x0140, $a1=y=0x01df
 sll  $s1, $a0, 16           # 将x=$a0放到$s1的高16位，$s1=0x01400000
-ori  $s1, $s1, $a1          # 将y=$a1放到$s1的低16位，$s1=0x014001df
+or  $s1, $s1, $a1           # 将y=$a1放到$s1的低16位，$s1=0x014001df
 add  $s2, $zero, $zero      # 获取存放tank坐标的内存地址$s2=0x0
 sw   $s1, 0($s2)            # 将tank坐标存放在0x0的内存地址上
 jal draw_tank               # 绘制tank
@@ -135,8 +134,11 @@ jr   $ra                    # 遍历完成，返回地址
 
 # 绘制tank
 # input: $a0=x, $a1=y, 其中(x,y)为tank最下方中心点位置
+# 注意：需要保护变量$s1, $s2
 draw_tank:
-addi $sp, $sp, -12
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
 sw   $a0, 8($sp)
 sw   $a1, 4($sp)
 sw   $ra, 0($sp)
@@ -156,13 +158,18 @@ jal draw_rectangle          # 绘制tank head
 lw   $ra, 0($sp)
 lw   $a1, 4($sp)
 lw   $a0, 8($sp)
-addi $sp, $sp, 12
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
 
 # 绘制障碍物
 # input: $a0=x, $a1=y, 其中(x,y)为obstacle最上方中心点位置
+# 注意：需要保护变量$s1, $s2
 draw_obstacle:
-addi $sp, $sp, -12
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
 sw   $a0, 8($sp)
 sw   $a1, 4($sp)
 sw   $ra, 0($sp)
@@ -177,13 +184,18 @@ jal draw_rectangle
 lw   $ra, 0($sp)
 lw   $a1, 4($sp)
 lw   $a0, 8($sp)
-addi $sp, $sp, 12
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
 
 # 移除障碍物
 # input: $a0=x, $a1=y, 其中(x,y)为obstacle最上方中心点位置
+# 注意：需要保护变量$s1, $s2
 remove_obstacle:
-addi $sp, $sp, -12
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
 sw   $a0, 8($sp)
 sw   $a1, 4($sp)
 sw   $ra, 0($sp)
@@ -198,7 +210,9 @@ jal remove_rectangle
 lw   $ra, 0($sp)
 lw   $a1, 4($sp)
 lw   $a0, 8($sp)
-addi $sp, $sp, 12
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
 
 # 画一个长方形(只会改变这个长方形范围内的像素值)
@@ -306,9 +320,9 @@ update_graph:
 addi $sp, $sp, -4
 sw   $ra, 0($sp)
 addi $t9, $t9, 1            # $t9=flag++
-lui  $t1, 0x0002            
-bne  $t9, $t1, update_old   # 如果flag!=0x00020000，则只更新旧的障碍物，不生成新的障碍物
-add  $t9, $zero, $zero      # 如果flag=0x00020000，则生成新的障碍物，且$t9=flag清零
+addi $t1, $zero, 20          
+bne  $t9, $t1, update_old   # 如果flag!=20，则只更新旧的障碍物，不生成新的障碍物
+add  $t9, $zero, $zero      # 如果flag=20，则生成新的障碍物，且$t9=flag清零
 lw   $t1, 0($k1)            # 范围：0x00000000~0x00025800
 srl  $t1, $t1, 8            # 右移8bit:0x0000~0x0258<=>(0,600)
 addi $t1, $t1, 20           # 获取随机生成的障碍物中心点x坐标(20,620)
@@ -334,9 +348,9 @@ addi $s0, $zero, 0x000F     # 设置障碍物为蓝色
 jal draw_obstacle           # 绘制障碍物
 # ------------------------------更新所有已存在obstacle的位置 begin--------------------------------------
 update_old:
-addi $t1, $zero, 3
-and  $t1, $t1, $t9          # 获取$t9=flag的最低两位，如果为0，则不更新旧obstacle的位置(控制刷新频率，每4次进入这个函数刷新一次位置)
-beq  $t1, $zero, end_traverse 
+#addi $t1, $zero, 3
+#and  $t1, $t1, $t9          # 获取$t9=flag的最低两位，如果为0，则不更新旧obstacle的位置(控制刷新频率，每4次进入这个函数刷新一次位置)
+#beq  $t1, $zero, end_traverse 
 addi $s2, $zero, 0x0004     # 获取存放障碍物个数num的内存地址
 lw   $s3, 0($s2)            # 获取当前的障碍物个数$s3=num
 addi $s2, $zero, 0x0008     # 获取存放障碍物坐标数组头的内存地址$s2
@@ -346,10 +360,17 @@ lw   $s1, 0($s2)            # 遍历每一个obstacle的(x,y)坐标，赋给$s1
 lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
 and  $a0, $a0, $s1
 srl  $a0, $a0, 16
-addi $a1, $zero, 0xFFFF
+ori $a1, $zero, 0xFFFF     # 注意，addi是有符号位扩展，addi $a1, $zero, 0xFFFF是错误的！应当使用ori
 and  $a1, $a1, $s1          # 提取出y坐标赋给$a1
+
+add $gp, $a0, $zero
+add $fp, $a1, $zero
+
+
 jal remove_obstacle         # 移除障碍物
 addi $a1, $a1, 5            # x坐标不变，更新y坐标$a1=y+5
+
+
 jal draw_obstacle           # 重新绘制障碍物，以显示移动的效果
 sll $s1, $a0, 16
 or  $s1, $s1, $a1           # 把该障碍物新的坐标重新赋给$s1
