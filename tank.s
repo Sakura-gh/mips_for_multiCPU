@@ -503,7 +503,7 @@ srl  $a0, $a0, 16
 ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1 
 and  $a1, $a1, $s1          
 jal  remove_tank
-addi $a1, $a1, 20           # tank坐标上移20
+addi $a1, $a1, -20          # tank坐标上移20
 jal  draw_tank
 sll  $s1, $a0, 16
 or   $s1, $s1, $a1
@@ -531,7 +531,7 @@ srl  $a0, $a0, 16
 ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1 
 and  $a1, $a1, $s1          
 jal  remove_tank
-addi $a1, $a1, -20          # tank坐标下移20
+addi $a1, $a1, 20           # tank坐标下移20
 jal  draw_tank
 sll  $s1, $a0, 16
 or   $s1, $s1, $a1
