@@ -15,8 +15,9 @@
 
 .data 0x00
 tank:       .word   0x0     # 记录tank的(x,y)坐标，其中前16位是x，后16位是y   address=0x0000
-num:        .word   0x0     # 记录障碍物的个数                               address=0x0004
-obstacle:   .word   0x0     # 记录障碍物的(x,y)坐标，其中前16位是x，后16位是y  address=0x0008
+bullet:     .word   0x0     # 记录bullet的(x,y)坐标，其中前16位是x，后16位是y address=0x0004
+num:        .word   0x0     # 记录障碍物的个数                               address=0x0008
+obstacle:   .word   0x0     # 记录障碍物的(x,y)坐标，其中前16位是x，后16位是y  address=0x000C
 
 
 .text 0x40
@@ -163,6 +164,37 @@ lw   $s1, 16($sp)
 addi $sp, $sp, 20
 jr $ra
 
+# 移除tank
+# input: $a0=x, $a1=y, 其中(x,y)为tank最下方中心点位置
+# 注意：需要保护变量$s1, $s2
+remove_tank:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+add  $s1, $a1, $zero        # 保存input的(x,y)信息
+add  $s2, $a0, $zero
+addi $s0, $zero, 0x00F0     # tank恢复为背景色，绿色
+addi $a0, $s2, -30          # tank body: (x-30,y-20)~(x+30,y)
+addi $a1, $s1, -20
+addi $a2, $s2, 30
+add  $a3, $s1, $zero 
+jal remove_rectangle        # 移除tank body
+addi $a0, $s2, -10          # tank head: (x-10,y-40)~(x+10,y-20)
+addi $a1, $s1, -40
+addi $a2, $s2, 10
+addi $a3, $s1, -20
+jal remove_rectangle        # 移除tank head
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
+jr $ra
+
 # 绘制障碍物
 # input: $a0=x, $a1=y, 其中(x,y)为obstacle最上方中心点位置
 # 注意：需要保护变量$s1, $s2
@@ -214,6 +246,59 @@ lw   $s2, 12($sp)
 lw   $s1, 16($sp)
 addi $sp, $sp, 20
 jr $ra
+
+
+# 绘制bullet
+# input: $a0=x, $a1=y, 其中(x,y)为obstacle最下方中心点位置
+# 注意：需要保护变量$s1, $s2
+draw_bullet:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+add  $s1, $a1, $zero        # 保存input的(x,y)信息到($s2,$s1)
+add  $s2, $a0, $zero 
+addi $s0, $zero, 0x0F00     # bullet为红色
+addi $a0, $s2, -5           # 左上角($s2-5,$s1-10)
+addi $a1, $s1, -10
+addi $a2, $s2, 5            # 右下角($s2+5,$s1)
+addi $a3, $s1, 0
+jal draw_rectangle
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
+jr $ra
+
+# 移除bullet
+# input: $a0=x, $a1=y, 其中(x,y)为obstacle最下方中心点位置
+# 注意：需要保护变量$s1, $s2
+remove_bullet:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+add  $s1, $a1, $zero        # 保存input的(x,y)信息到($s2,$s1)
+add  $s2, $a0, $zero 
+addi $s0, $zero, 0x00F0     # bullet恢复为背景色，绿色
+addi $a0, $s2, -5           # 左上角($s2-5,$s1-10)
+addi $a1, $s1, -10
+addi $a2, $s2, 5            # 右下角($s2+5,$s1)
+addi $a3, $s1, 0
+jal remove_rectangle
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
+jr   $ra
 
 # 画一个长方形(只会改变这个长方形范围内的像素值)
 # input ($a0,$a1)=左上角坐标， ($a2,$a3)=右下角坐标
@@ -328,11 +413,11 @@ srl  $t1, $t1, 8            # 右移8bit:0x0000~0x0258<=>(0,600)
 addi $t1, $t1, 20           # 获取随机生成的障碍物中心点x坐标(20,620)
 # ------------------------------将新生成的obstacle插入障碍物数组 begin------------------------------------
 sll  $s1, $t1, 16           # 将($t1,0)压缩到一个寄存器$s1里，x为高16位，y为低16位
-addi $s2, $zero, 0x0004     # 获取存放障碍物个数num的内存地址
+addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
 lw   $s3, 0($s2)            # 获取当前的障碍物个数$s3=num
 addi $s3, $s3, 1            # 障碍物个数num++
 sw   $s3, 0($s2)            # 更新num
-addi $s2, $zero, 0x0008     # 获取存放障碍物坐标数组头的内存地址$s2
+addi $s2, $zero, 0x000C     # 获取存放障碍物坐标数组头的内存地址$s2
 addi $s3, $s3, -1           # $s3=$s3-1
 find_obs_addr:              # 寻找存放新增的障碍物(x,y)坐标的内存地址,更新到$s2
 beq  $s3, $zero, insert_obs
@@ -346,31 +431,43 @@ add  $a0, $t1, $zero        # ($t1,0)
 add  $a1, $zero, $zero
 addi $s0, $zero, 0x000F     # 设置障碍物为蓝色
 jal draw_obstacle           # 绘制障碍物
-# ------------------------------更新所有已存在obstacle的位置 begin--------------------------------------
+# ------------------------------更新所有已存在bullet、obstacle的位置 begin--------------------------------------
 update_old:
 #addi $t1, $zero, 3
 #and  $t1, $t1, $t9          # 获取$t9=flag的最低两位，如果为0，则不更新旧obstacle的位置(控制刷新频率，每4次进入这个函数刷新一次位置)
 #beq  $t1, $zero, end_traverse 
-addi $s2, $zero, 0x0004     # 获取存放障碍物个数num的内存地址
+# ---------------------------update bullet----------------------------------
+#update_bullet:
+addi $s2, $zero, 0x0004     # 取出bullet坐标地址
+lw   $s1, 0($s2)            # bullet的(x,y)坐标，赋给$s1
+beq  $s1, $zero, update_obs
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF     
+and  $a1, $a1, $s1          # 提取出y坐标赋给$a1
+jal remove_bullet           # 移除bullet
+addi $a1, $a1, -5           # x坐标不变，更新y坐标$a1=y-5
+jal draw_bullet             # 重新绘制bullet，以显示移动的效果
+sll $s1, $a0, 16
+or  $s1, $s1, $a1           # 把该障碍物新的坐标重新赋给$s1
+sw  $s1, 0($s2)             # 将$s1重新存储到指定内存地址
+# --------------------------------------------------------------------------
+# ---------------------------update obstacle--------------------------------
+update_obs:
+addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
 lw   $s3, 0($s2)            # 获取当前的障碍物个数$s3=num
-addi $s2, $zero, 0x0008     # 获取存放障碍物坐标数组头的内存地址$s2
+addi $s2, $zero, 0x000C     # 获取存放障碍物坐标数组头的内存地址$s2
 traverse_obs_addr:
 beq  $s3, $zero, end_traverse
 lw   $s1, 0($s2)            # 遍历每一个obstacle的(x,y)坐标，赋给$s1
 lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
 and  $a0, $a0, $s1
 srl  $a0, $a0, 16
-ori $a1, $zero, 0xFFFF     # 注意，addi是有符号位扩展，addi $a1, $zero, 0xFFFF是错误的！应当使用ori
+ori  $a1, $zero, 0xFFFF     # 注意，addi是有符号位扩展，addi $a1, $zero, 0xFFFF是错误的！应当使用ori
 and  $a1, $a1, $s1          # 提取出y坐标赋给$a1
-
-add $gp, $a0, $zero
-add $fp, $a1, $zero
-
-
 jal remove_obstacle         # 移除障碍物
 addi $a1, $a1, 5            # x坐标不变，更新y坐标$a1=y+5
-
-
 jal draw_obstacle           # 重新绘制障碍物，以显示移动的效果
 sll $s1, $a0, 16
 or  $s1, $s1, $a1           # 把该障碍物新的坐标重新赋给$s1
@@ -379,7 +476,8 @@ addi $s2, $s2, 4            # 下一个障碍物的地址
 addi $s3, $s3, -1           # num--
 j traverse_obs_addr
 end_traverse:
-# ------------------------------更新所有已存在obstacle的位置 end----------------------------------------
+# --------------------------------------------------------------------------
+# ------------------------------更新所有已存在bullet、obstacle的位置 end----------------------------------------
 lw   $ra, 0($sp)
 addi $sp, $sp, 4
 jr $ra
@@ -391,16 +489,149 @@ game_over:
 jr $ra
 
 up:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+addi $s2, $zero, 0x0000     # 存放tank地址的内存空间
+lw   $s1, 0($s2)            # 取出tank地址
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1 
+and  $a1, $a1, $s1          
+jal  remove_tank
+addi $a1, $a1, 20           # tank坐标上移20
+jal  draw_tank
+sll  $s1, $a0, 16
+or   $s1, $s1, $a1
+sw   $s1, 0($s2)            # 把新的tank坐标存放到指定内存地址
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
 
 down:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+addi $s2, $zero, 0x0000     # 存放tank地址的内存空间
+lw   $s1, 0($s2)            # 取出tank地址
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1 
+and  $a1, $a1, $s1          
+jal  remove_tank
+addi $a1, $a1, -20          # tank坐标下移20
+jal  draw_tank
+sll  $s1, $a0, 16
+or   $s1, $s1, $a1
+sw   $s1, 0($s2)            # 把新的tank坐标存放到指定内存地址
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
 
 left:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+addi $s2, $zero, 0x0000     # 存放tank地址的内存空间
+lw   $s1, 0($s2)            # 取出tank地址
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1 
+and  $a1, $a1, $s1          
+jal  remove_tank
+addi $a0, $a0, -20           # tank坐标左移20
+jal  draw_tank
+sll  $s1, $a0, 16
+or   $s1, $s1, $a1
+sw   $s1, 0($s2)            # 把新的tank坐标存放到指定内存地址
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
 
 right:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+addi $s2, $zero, 0x0000     # 存放tank地址的内存空间
+lw   $s1, 0($s2)            # 取出tank地址
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1 
+and  $a1, $a1, $s1          
+jal  remove_tank
+addi $a0, $a0, 20            # tank坐标右移20
+jal  draw_tank
+sll  $s1, $a0, 16
+or   $s1, $s1, $a1
+sw   $s1, 0($s2)            # 把新的tank坐标存放到指定内存地址
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
 
 shot:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+addi $s2, $zero, 0x0004     # 获取存放bullet坐标的内存地址
+lw   $s1, 0($s2)            # 取出bullet坐标
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1
+and  $a1, $a1, $s1
+jal remove_bullet           # 删去原先已经发射的bullet
+addi $s2, $zero, 0x0000     # 获取存放tank坐标的内存地址
+lw   $s1, 0($s2)            # 取出tank坐标
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF     # 提取出y坐标赋给$a1
+and  $a1, $a1, $s1
+#addi $a1, $a1, -40
+sll  $s1, $a0, 16           # 重新合成bullet的坐标放到$s1里
+or   $s1, $s1, $a1
+addi $s2, $zero, 0x0004     # 获取存放bullet坐标的内存地址
+sw   $s1, 0($s2)            # 将新的bullet坐标存放到指定内存地址
+jal draw_bullet
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
 jr $ra
