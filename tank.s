@@ -325,6 +325,11 @@ bne  $t3, $zero, jump_x_rec
 slt  $t3, $a3, $t1
 bne  $t3, $zero, jump_x_rec
 # addi  $s0, $zero, 0x0F00  # $s0由参数传进 
+# lh   $t4, 0($t0)            # 取出矩形框内每个点的像素值，如果为蓝色，说明这个范围内会有障碍物，返回$v0=1
+# addi $t4, $t4, -0x000F
+# bne  $t4, $zero, draw_continue
+# addi $v0, $zero, 1
+# draw_continue:  
 sh   $s0, 0($t0)            # 把$s0的前16位rgb放到当前点的地址上，后16位全0，不作使用
 jump_x_rec:
 addi $t0, $t0, 2            # offset+=2，每个点占2byte
@@ -419,13 +424,16 @@ addi $s3, $s3, 1            # 障碍物个数num++
 sw   $s3, 0($s2)            # 更新num
 addi $s2, $zero, 0x000C     # 获取存放障碍物坐标数组头的内存地址$s2
 addi $s3, $s3, -1           # $s3=$s3-1
-find_obs_addr:              # 寻找存放新增的障碍物(x,y)坐标的内存地址,更新到$s2
-beq  $s3, $zero, insert_obs
+insert_obs:                 # 寻找存放新增的障碍物(x,y)坐标的内存地址,更新到$s2
+beq  $s3, $zero, end_insert_obs
+lw   $s4, 0($s2)            # 保存当前扫描到的障碍物坐标到$s4
+sw   $s1, 0($s2)            # 将上一个障碍物的坐标$s1存到当前位置上
+add  $s1, $zero, $s4        # 更新上一个障碍物的坐标$s1=$s4
 addi $s2, $s2, 4
 addi $s3, $s3, -1
-j find_obs_addr
-insert_obs:                 # 找到地址后，将$t1存放到该内存地址上
-sw   $s1, 0($s2)
+j insert_obs
+end_insert_obs:             # 更新最后一个障碍物坐标的位置，插入完毕后，绘制该障碍物
+sw   $s1, 0($s2)            # 将上一个障碍物的坐标$s1存到当前位置上
 # ------------------------------将新生成的obstacle插入障碍物数组 end------------------------------------
 add  $a0, $t1, $zero        # ($t1,0)
 add  $a1, $zero, $zero
@@ -482,7 +490,30 @@ lw   $ra, 0($sp)
 addi $sp, $sp, 4
 jr $ra
 
+
+# 判断障碍物是否超出界面，如果超出边界，则清空对应地址上的坐标，且障碍物个数--
 judge:
+addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
+lw   $s3, 0($s2)            # 获取当前的障碍物个数$s3=num
+add  $t3, $zero, $s3        # 用$t3保存当前还剩余的障碍物个数，初始化为num
+addi $s2, $zero, 0x000C     # 获取存放障碍物坐标数组头的内存地址$s2
+judge_edge:
+beq  $s3, $zero, end_judge
+lw   $s1, 0($s2)            # 遍历每一个obstacle的(x,y)坐标，赋给$s1
+ori  $t1, $zero, 0xFFFF
+and  $t1, $s1, $t1          # 获取obstacle的y坐标
+slti $t2, $t1, 479
+bne  $t2, $zero, judge_next # 如果还未到达边界，则继续遍历下一个obstacle
+sw   $zero, 0($s2)          # 如果到达边界，则当前扫描到的地址赋值为0
+addi $t3, $t3, -1           # 当前剩余的障碍物个数-1 
+judge_next:
+addi $s2, $s2, 4            # 下一个障碍物的地址
+addi $s3, $s3, -1           # num--
+j judge_edge
+end_judge:
+addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
+sw   $t3, 0($s2)            # 更新当前的障碍物个数为$t3
+add  $gp, $zero, $t3
 jr $ra
 
 game_over:
