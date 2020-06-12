@@ -10,6 +10,7 @@
 # $sp=0x0000FFFF 堆栈指针地址
 # $t0=当前点地址
 # $s0=当前点的颜色
+# $t8=当前得分(每击中一个obstacle，+1分)
 # $t9=是否生成新的障碍物的flag, 当$t9=0x00020000时生成新的障碍物
 # ######################################################
 
@@ -36,6 +37,7 @@ ori $s7, $s7, 0xD000
 lui $s6, 0x000C       
 ori $s6, $s6, 0x2000        # $s6 = vram_graph = 0x000C2000 vga地址
 
+add $t8, $zero, $zero       # 当前得分初始化为0
 add $t9, $zero, $zero       # flag初始化为0
 
 jal init_graph              # 先初始化界面
@@ -89,9 +91,9 @@ jr   $ra
 check_counter:
 addi $sp, $sp, -4
 sw   $ra, 0($sp)
-lw   $t8, 0($k0)            # 读取GPIO
+lw   $t3, 0($k0)            # 读取GPIO
 lui  $t1, 0x8000     
-and  $t2, $t8, $t1          # 取出GPIO端口最高位counter0_out信号
+and  $t2, $t3, $t1          # 取出GPIO端口最高位counter0_out信号
 beq  $t2, $zero, continue   # 如果计数器还未计满数字，则不用重新给计数器赋值
 jal init_counter            # 如果计数器已经计完一遍数字，则重新开始计数
 continue:
@@ -476,6 +478,10 @@ beq $v0, $zero, no_bullet_collision
 add  $s1, $zero, $zero      # 如果发生碰撞，则bullet坐标清零
 addi $a1, $a1, 10           # 恢复刚刚画的bullet的坐标
 jal remove_bullet           # 移除刚刚画的bullet
+# ----------------------------update score and max_score---------------------
+addi $a0, $zero, 1
+jal update_score
+# --------------------------------------------------------------------------
 no_bullet_collision:
 sw  $s1, 0($s2)             # 将$s1重新存储到指定内存地址
 # --------------------------------------------------------------------------
@@ -508,11 +514,80 @@ lw   $ra, 0($sp)
 addi $sp, $sp, 4
 jr $ra
 
+# 更新score, input $a0=+1(击中障碍物+1) or $a0=0(障碍物出界-2)
+update_score:
+addi $sp, $sp, -20
+sw   $t3, 16($sp)
+sw   $s1, 12($sp)
+sw   $s2, 8($sp)
+sw   $s3, 4($sp)
+sw   $ra, 0($sp)
+beq  $a0, $zero, minus_score
+addi $t8, $t8, 1 
+j read_score
+minus_score:
+slti $t3, $t8, 2            # 如果$t8小于2，则obstacle出界后得分为负，游戏结束
+beq  $t3, $zero, minus_con
+j game_over
+minus_con:
+addi $t8, $t8, -2
+read_score:
+lui  $s1, 0xFFFF
+ori  $s1, $s1, 0xFE00       # $t1=七段数码管地址=0xFFFFFE00
+lw   $s2, 0($s1)            # 读取显示的数据，前4个数码管为max_score，后4个数码管为当前score
+srl  $s2, $s2, 16 
+slt  $s3, $s2, $t8          # 判断是否要更新max score
+beq  $s3, $zero, update_r_score
+sll  $s2, $t8, 16
+or   $s2, $s2, $t8
+j update_all_score
+update_r_score:
+sll  $s2, $s2, 16
+or   $s2, $s2, $t8
+update_all_score:
+sw   $s2, 0($s1)            # 将当前得分更新到七段数码管显示
+lw   $ra, 0($sp)
+lw   $s3, 4($sp)
+lw   $s2, 8($sp)
+lw   $s1, 12($sp)
+lw   $t3, 16($sp)
+addi $sp, $sp, 20
+jr   $ra
 
-# 判断障碍物是否超出界面，如果超出边界，则清空对应地址上的坐标，且障碍物个数--
+# 判断tank是否会与障碍物发生碰撞，如果发生碰撞，则游戏重新开始
+# 判断障碍物是否超出界面，如果超出边界，则清空对应地址上的坐标，且障碍物个数-1
 judge:
 addi $sp, $sp, -4
 sw   $ra, 0($sp)
+addi $s2, $zero, 0x0000
+lw   $s1, 0($s2)            # 取出tank的坐标
+lui  $a0, 0xFFFF            # 获取tank的x坐标
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16 
+ori  $a1, $zero, 0xFFFF
+and  $a1, $a1, $s1          # 获取tank下边界中心点的y坐标
+addi $a1, $a1, -41          # 获取tank上边界上一行中心点的y坐标
+jal coordinate_to_address
+addi $t1, $zero, 0x000F     # 蓝色
+lh   $s0, 0($v0)            
+bne  $s0, $t1, judge_tank_left 
+j game_over
+judge_tank_left:
+addi $a0, $a0, -30
+addi $a1, $a1, 20
+jal coordinate_to_address
+addi $t1, $zero, 0x000F     # 蓝色
+lh   $s0, 0($v0)            
+bne  $s0, $t1, judge_tank_right 
+j game_over
+judge_tank_right:
+addi $a0, $a0, 60
+jal coordinate_to_address
+addi $t1, $zero, 0x000F     # 蓝色
+lh   $s0, 0($v0)            
+bne  $s0, $t1, judge_obs_traversal 
+j game_over
+judge_obs_traversal:
 addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
 lw   $s3, 0($s2)            # 获取当前的障碍物个数$s3=num
 add  $t3, $zero, $s3        # 用$t3保存当前还剩余的障碍物个数，初始化为num
@@ -520,59 +595,15 @@ addi $s2, $zero, 0x000C     # 获取存放障碍物坐标数组头的内存地�
 judge_obs:
 beq  $s3, $zero, end_judge
 lw   $s1, 0($s2)            # 遍历每一个obstacle的(x,y)坐标，赋给$s1
-
-lui  $t4, 0xFFFF            # 提取出x坐标赋给$t4
-and  $t4, $t4, $s1
-srl  $t4, $t4, 16
 ori  $t1, $zero, 0xFFFF
 and  $t1, $s1, $t1          # 获取obstacle上边界中心点的y坐标，赋给$t1，
-addi $t5, $t1, 40           # 获取obstacle下边界中心点的y坐标，赋给$t5
-
-judge_middle:               # 通过中心点判断是否会碰撞
-add  $a0, $zero, $t4        # 获取obstacle下一行中心点的x坐标
-addi $a1, $t5, 1            # 获取obstacle下一行的y坐标
-jal coordinate_to_address
-addi $t6, $zero, 0x0F00     # 红色
-lh   $s0, 0($v0)
-bne  $s0, $t6, judge_left
-addi $a1, $a1, 10           # 继续判断，区别bullet和tank(bullet长度只有10)
-jal coordinate_to_address
-lh   $s0, 0($v0)
-bne  $s0, $t6, judge_left
-j game_over                 # 如果tank与obstacle相碰，则游戏结束        
-
-judge_left:
-addi $a0, $t4, -20          # 获取obstacle下一行左边界的x坐标
-addi $a1, $t5, 1            # 获取obstacle下一行的y坐标
-jal coordinate_to_address
-addi $t6, $zero, 0x0F00     # 红色
-lh   $s0, 0($v0)
-bne  $s0, $t6, judge_right
-addi $a1, $a1, 10           # 继续判断，区别bullet和tank(bullet长度只有10)
-jal coordinate_to_address
-lh   $s0, 0($v0)
-bne  $s0, $t6, judge_right
-j game_over                 # 如果tank与obstacle相碰，则游戏结束     
-
-judge_right:
-addi $a0, $t4, 18           # 获取obstacle下一行右边界的x坐标
-addi $a1, $t5, 1            # 获取obstacle下一行的y坐标
-jal coordinate_to_address
-addi $t6, $zero, 0x0F00     # 红色
-lh   $s0, 0($v0)
-add  $gp, $zero, $s0
-bne  $s0, $t6, judge_edge
-addi $a1, $a1, 10           # 继续判断，区别bullet和tank(bullet长度只有10)
-jal coordinate_to_address
-lh   $s0, 0($v0)
-bne  $s0, $t6, judge_edge
-j game_over                 # 如果tank与obstacle相碰，则游戏结束   
-
 judge_edge:
 slti $t2, $t1, 479
 bne  $t2, $zero, judge_next # 如果还未到达边界，则继续遍历下一个obstacle
 sw   $zero, 0($s2)          # 如果到达边界，则当前扫描到的地址赋值为0
 addi $t3, $t3, -1           # 当前剩余的障碍物个数-1 
+add  $a0, $zero, $zero      # 障碍物出界，得分-2
+jal update_score
 judge_next:
 addi $s2, $s2, 4            # 下一个障碍物的地址
 addi $s3, $s3, -1           # num--
@@ -598,7 +629,7 @@ addi $a1, $a1, -1           # 取出上一行点的y坐标
 add  $t6, $zero, $a1        # 保存该y坐标到$t6
 jal coordinate_to_address
 lh   $t1, 0($v0)            # 取出上一行点的rgb
-add  $gp, $zero, $t1
+#add  $gp, $zero, $t1
 addi $t2, $zero, 0x000F     # 与障碍物的蓝色对比
 addi $v0, $zero, 0
 bne  $t1, $t2, check_end
@@ -649,6 +680,11 @@ jr   $ra
 
 
 game_over:
+lui  $t1, 0xFFFF
+ori  $s1, $t1, 0xFE00       # $s1=七段数码管地址
+lw   $s2, 0($s1)            # 读取显示的数据，前4个数码管为max_score，后4个数码管为当前score
+and  $s2, $s2, $t1          # 只保留最高分，最低分清零
+sw   $s2, 0($s1)            # 更新score，开启下一轮
 add  $s2, $zero, $zero
 sw   $zero, 0($s2)          # tank坐标清零
 addi $s2, $s2, 4 
@@ -659,6 +695,7 @@ game_clear:                 # obstacle清零
 beq  $s1, $zero, clear_end
 sw   $zero, 0($s2)
 addi $s2, $s2, 4
+lw   $s1, 0($s2)
 j game_clear
 clear_end:
 j init
