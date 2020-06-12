@@ -304,7 +304,8 @@ jr   $ra
 # input ($a0,$a1)=左上角坐标， ($a2,$a3)=右下角坐标
 # input $s0=长方形颜色
 draw_rectangle:
-addi $sp, $sp, -4
+addi $sp, $sp, -8
+sw   $t3, 4($sp)
 sw   $ra, 0($sp)
 add  $t0, $zero, $s6        # $t0表示当前点的地址，初始化为第一个点的地址
 add  $t1, $zero, $zero      # $t1表示当前扫描到的y坐标
@@ -340,7 +341,8 @@ addi $t1, $t1, 1            # $t1=y++
 j loop_y_rec                # 继续遍历下一行
 end_y_rec:                  # 所有行遍历结束
 lw   $ra, 0($sp)
-addi $sp, $sp, 4
+lw   $t3, 4($sp)
+addi $sp, $sp, 8
 jr $ra
 
 
@@ -348,7 +350,8 @@ jr $ra
 # input ($a0,$a1)=左上角坐标， ($a2,$a3)=右下角坐标
 # $s0=背景色
 remove_rectangle:
-addi $sp, $sp, -4
+addi $sp, $sp, -8
+sw   $t3, 4($sp)
 sw   $ra, 0($sp)
 add  $t0, $zero, $s6        # $t0表示当前点的地址，初始化为第一个点的地址
 add  $t1, $zero, $zero      # $t1表示当前扫描到的y坐标
@@ -379,7 +382,8 @@ addi $t1, $t1, 1           # $t1=y++
 j loop_y_rm                # 继续遍历下一行
 end_y_rm:                  # 所有行遍历结束
 lw   $ra, 0($sp)
-addi $sp, $sp, 4
+lw   $t3, 4($sp)
+addi $sp, $sp, 8
 jr $ra
 
 
@@ -448,7 +452,7 @@ update_old:
 #update_bullet:
 addi $s2, $zero, 0x0004     # 取出bullet坐标地址
 lw   $s1, 0($s2)            # bullet的(x,y)坐标，赋给$s1
-beq  $s1, $zero, update_obs
+beq  $s1, $zero, update_obs # 如果bullet坐标为0，则要么是初始状态，要么已经发生碰撞，需要再次按下'o'才能触发新的bullet
 lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
 and  $a0, $a0, $s1
 srl  $a0, $a0, 16
@@ -459,6 +463,13 @@ addi $a1, $a1, -5           # x坐标不变，更新y坐标$a1=y-5
 jal draw_bullet             # 重新绘制bullet，以显示移动的效果
 sll $s1, $a0, 16
 or  $s1, $s1, $a1           # 把该障碍物新的坐标重新赋给$s1
+addi $a1, $a1, -10          # 获取bullet头部中心点的y坐标
+jal check_collision         # 判断是否与障碍物碰撞
+beq $v0, $zero, no_bullet_collision
+add  $s1, $zero, $zero      # 如果发生碰撞，则bullet坐标清零
+addi $a1, $a1, 10           # 恢复刚刚画的bullet的坐标
+jal remove_bullet           # 移除刚刚画的bullet
+no_bullet_collision:
 sw  $s1, 0($s2)             # 将$s1重新存储到指定内存地址
 # --------------------------------------------------------------------------
 # ---------------------------update obstacle--------------------------------
@@ -513,8 +524,71 @@ j judge_edge
 end_judge:
 addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
 sw   $t3, 0($s2)            # 更新当前的障碍物个数为$t3
-add  $gp, $zero, $t3
 jr $ra
+
+# 判断tank or bullet是否会与障碍物撞上
+# input: $a0=x, $a1=y (默认是上边界)
+# output: $v0=1: 已经碰撞，$v0=0: 尚未碰撞
+check_collision:
+addi $sp, $sp, -20
+sw   $s1, 16($sp)
+sw   $s2, 12($sp)
+sw   $a0, 8($sp)
+sw   $a1, 4($sp)
+sw   $ra, 0($sp)
+addi $a1, $a1, -1           # 取出上一行点的y坐标
+add  $t6, $zero, $a1        # 保存该y坐标到$t6
+jal coordinate_to_address
+lh   $t1, 0($v0)            # 取出上一行点的rgb
+add  $gp, $zero, $t1
+addi $t2, $zero, 0x000F     # 与障碍物的蓝色对比
+addi $v0, $zero, 0
+bne  $t1, $t2, check_end
+addi $v0, $zero, 1
+addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
+lw   $s3, 0($s2)            # 获取当前的障碍物个数$s3=num
+add  $t3, $zero, $s3        # 用$t3保存当前还剩余的障碍物个数，初始化为num
+addi $s2, $zero, 0x000C     # 获取存放障碍物坐标数组头的内存地址$s2
+add  $t5, $zero, $zero      # flag=0
+check_obs:
+beq  $s3, $zero, check_obs_end
+lw   $s1, 0($s2)            # 遍历每一个obstacle的(x,y)坐标，赋给$s1
+beq  $t5, $zero, check_obs_con
+addi $t2, $s2, -4           # 如果$t5=flag=1,则将当前坐标上移一个byte
+sw   $s1, 0($t2)
+sw   $zero, 0($s2)          # 当前地址上的坐标清空
+j check_bos_next
+check_obs_con:
+lui  $a0, 0xFFFF            # 提取出x坐标赋给$a0
+and  $a0, $a0, $s1
+srl  $a0, $a0, 16
+ori  $a1, $zero, 0xFFFF
+and  $a1, $s1, $a1          # 提取出y坐标赋给$a1
+add  $t1, $zero, $a1        # 获取obstacle的y坐标上界$t1
+addi $t2, $t1, 40           # 获取obstacle的y坐标下界$t2
+slt  $t4, $t6, $t2
+beq  $t4, $zero, check_bos_next
+slt  $t4, $t1, $t6
+beq  $t4, $zero, check_bos_next
+addi $t5, $zero, 1
+addi $t3, $t3, -1
+jal remove_obstacle
+check_bos_next:
+addi $s2, $s2, 4            # 下一个障碍物的地址
+addi $s3, $s3, -1           # num--
+j check_obs
+check_obs_end:
+addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
+sw   $t3, 0($s2)            # 更新当前的障碍物个数为$t3
+check_end:
+lw   $ra, 0($sp)
+lw   $a1, 4($sp)
+lw   $a0, 8($sp)
+lw   $s2, 12($sp)
+lw   $s1, 16($sp)
+addi $sp, $sp, 20
+jr   $ra
+
 
 game_over:
 jr $ra
