@@ -21,6 +21,7 @@ obstacle:   .word   0x0     # 记录障碍物的(x,y)坐标，其中前16位是x
 
 
 .text 0x40
+init:
 ori $sp, $zero, 0xFFFF      # 先给$sp一个地址，避免溢出
 
 lui $k0, 0xFFFF             # $k0 = 0xFFFFFF00 GPIO地址
@@ -45,8 +46,8 @@ read_kbd:
 jal check_counter           # 检查计数器是否要重新赋值
 jal update_graph            # 每次读取ps2前先更新一下vga画面，主要是更新障碍物的位置
 jal judge                   # 判断更新完位置的障碍物是否与tank相撞
-addi $v0, $v0, -1           # 如果返回值为1，则减一后为0
-beq  $v0, $zero, game_over  # 此时表明障碍物已经与tank相撞，游戏结束
+#addi $v0, $v0, -1           # 如果返回值为1，则减一后为0
+#beq  $v0, $zero, game_over  # 此时表明障碍物已经与tank相撞，游戏结束
 lui  $s5, 0x8000            # $s5 = 0x80000000 $s5最高位为1，用于取出ps2的ready信号
 addi $s4, $zero, 0x00F0     # $s4 = 0x000000F0 ，F0是断码的标志，是所有key的倒数第二个断码
 lw   $t1, 0($s7)            # $t1 = {1'ps2_ready, 23'h0, 8'key}
@@ -392,7 +393,10 @@ jr $ra
 # input: (x=$a0,y=$a1)
 # output: $v0=address
 coordinate_to_address:
-addi $sp, $sp, -4
+addi $sp, $sp, -16
+sw   $t0, 12($sp)
+sw   $t3, 8($sp)
+sw   $t1, 4($sp)
 sw   $ra, 0($sp)
 add  $t0, $zero, $s6        # $t0是当前点的地址，初始化为第一个点的地址
 add  $t1, $zero, $zero      # $t1=y=0
@@ -407,7 +411,10 @@ add  $t0, $t0, $a0          # offset_x=2*x
 add  $t0, $t0, $a0          # $t0已经是(x,y)点的实际地址
 add  $v0, $t0, $zero
 lw   $ra, 0($sp)
-addi $sp, $sp, 4
+lw   $t1, 4($sp)
+lw   $t3, 8($sp)
+lw   $t0, 12($sp)
+addi $sp, $sp, 16
 jr   $ra
 
 update_graph:
@@ -464,7 +471,7 @@ jal draw_bullet             # 重新绘制bullet，以显示移动的效果
 sll $s1, $a0, 16
 or  $s1, $s1, $a1           # 把该障碍物新的坐标重新赋给$s1
 addi $a1, $a1, -10          # 获取bullet头部中心点的y坐标
-jal check_collision         # 判断是否与障碍物碰撞
+jal check_bullet            # 判断是否与障碍物碰撞
 beq $v0, $zero, no_bullet_collision
 add  $s1, $zero, $zero      # 如果发生碰撞，则bullet坐标清零
 addi $a1, $a1, 10           # 恢复刚刚画的bullet的坐标
@@ -504,15 +511,64 @@ jr $ra
 
 # 判断障碍物是否超出界面，如果超出边界，则清空对应地址上的坐标，且障碍物个数--
 judge:
+addi $sp, $sp, -4
+sw   $ra, 0($sp)
 addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
 lw   $s3, 0($s2)            # 获取当前的障碍物个数$s3=num
 add  $t3, $zero, $s3        # 用$t3保存当前还剩余的障碍物个数，初始化为num
 addi $s2, $zero, 0x000C     # 获取存放障碍物坐标数组头的内存地址$s2
-judge_edge:
+judge_obs:
 beq  $s3, $zero, end_judge
 lw   $s1, 0($s2)            # 遍历每一个obstacle的(x,y)坐标，赋给$s1
+
+lui  $t4, 0xFFFF            # 提取出x坐标赋给$t4
+and  $t4, $t4, $s1
+srl  $t4, $t4, 16
 ori  $t1, $zero, 0xFFFF
-and  $t1, $s1, $t1          # 获取obstacle的y坐标
+and  $t1, $s1, $t1          # 获取obstacle上边界中心点的y坐标，赋给$t1，
+addi $t5, $t1, 40           # 获取obstacle下边界中心点的y坐标，赋给$t5
+
+judge_middle:               # 通过中心点判断是否会碰撞
+add  $a0, $zero, $t4        # 获取obstacle下一行中心点的x坐标
+addi $a1, $t5, 1            # 获取obstacle下一行的y坐标
+jal coordinate_to_address
+addi $t6, $zero, 0x0F00     # 红色
+lh   $s0, 0($v0)
+bne  $s0, $t6, judge_left
+addi $a1, $a1, 10           # 继续判断，区别bullet和tank(bullet长度只有10)
+jal coordinate_to_address
+lh   $s0, 0($v0)
+bne  $s0, $t6, judge_left
+j game_over                 # 如果tank与obstacle相碰，则游戏结束        
+
+judge_left:
+addi $a0, $t4, -20          # 获取obstacle下一行左边界的x坐标
+addi $a1, $t5, 1            # 获取obstacle下一行的y坐标
+jal coordinate_to_address
+addi $t6, $zero, 0x0F00     # 红色
+lh   $s0, 0($v0)
+bne  $s0, $t6, judge_right
+addi $a1, $a1, 10           # 继续判断，区别bullet和tank(bullet长度只有10)
+jal coordinate_to_address
+lh   $s0, 0($v0)
+bne  $s0, $t6, judge_right
+j game_over                 # 如果tank与obstacle相碰，则游戏结束     
+
+judge_right:
+addi $a0, $t4, 18           # 获取obstacle下一行右边界的x坐标
+addi $a1, $t5, 1            # 获取obstacle下一行的y坐标
+jal coordinate_to_address
+addi $t6, $zero, 0x0F00     # 红色
+lh   $s0, 0($v0)
+add  $gp, $zero, $s0
+bne  $s0, $t6, judge_edge
+addi $a1, $a1, 10           # 继续判断，区别bullet和tank(bullet长度只有10)
+jal coordinate_to_address
+lh   $s0, 0($v0)
+bne  $s0, $t6, judge_edge
+j game_over                 # 如果tank与obstacle相碰，则游戏结束   
+
+judge_edge:
 slti $t2, $t1, 479
 bne  $t2, $zero, judge_next # 如果还未到达边界，则继续遍历下一个obstacle
 sw   $zero, 0($s2)          # 如果到达边界，则当前扫描到的地址赋值为0
@@ -520,16 +576,18 @@ addi $t3, $t3, -1           # 当前剩余的障碍物个数-1
 judge_next:
 addi $s2, $s2, 4            # 下一个障碍物的地址
 addi $s3, $s3, -1           # num--
-j judge_edge
+j judge_obs
 end_judge:
 addi $s2, $zero, 0x0008     # 获取存放障碍物个数num的内存地址
 sw   $t3, 0($s2)            # 更新当前的障碍物个数为$t3
+lw   $ra, 0($sp)
+addi $sp, $sp, 4
 jr $ra
 
-# 判断tank or bullet是否会与障碍物撞上
+# 判断bullet是否会与障碍物撞上
 # input: $a0=x, $a1=y (默认是上边界)
 # output: $v0=1: 已经碰撞，$v0=0: 尚未碰撞
-check_collision:
+check_bullet:
 addi $sp, $sp, -20
 sw   $s1, 16($sp)
 sw   $s2, 12($sp)
@@ -591,7 +649,19 @@ jr   $ra
 
 
 game_over:
-jr $ra
+add  $s2, $zero, $zero
+sw   $zero, 0($s2)          # tank坐标清零
+addi $s2, $s2, 4 
+sw   $zero, 0($s2)          # bullet坐标清零
+addi $s2, $s2, 4
+lw   $s1, 0($s2)
+game_clear:                 # obstacle清零
+beq  $s1, $zero, clear_end
+sw   $zero, 0($s2)
+addi $s2, $s2, 4
+j game_clear
+clear_end:
+j init
 
 up:
 addi $sp, $sp, -20
