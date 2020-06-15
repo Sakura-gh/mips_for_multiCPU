@@ -1,0 +1,161 @@
+\documentclass[11pt]{article}
+\usepackage{overpic}
+\usepackage[margin=1.2in]{geometry}
+\usepackage[toc,page]{appendix}
+\usepackage{graphicx}
+\usepackage{natbib}
+\usepackage{lipsum}
+\usepackage{caption}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{algorithm}  
+\usepackage{algpseudocode}  
+\usepackage{amsmath}  
+\usepackage{ctex}
+\usepackage{float}
+\usepackage{hyperref} % 目录跳转
+\hypersetup{ % 去除目录的红框
+colorlinks=true,
+linkcolor=black
+}
+\renewcommand\contentsname{目录} 
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}  
+\renewcommand{\algorithmicensure}{\textbf{Output:}} 
+\renewcommand\thesection{\arabic {section}}
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mygray}{rgb}{0.5,0.5,0.5}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+\lstset{ 
+backgroundcolor=\color{white},   
+basicstyle=\footnotesize\ttfamily,       
+columns=fullflexible,
+breaklines=true,                
+captionpos=b,                    
+tabsize=4,
+commentstyle=\color{mygreen},   
+escapeinside={\%*}{*)},         
+keywordstyle=\color{blue},       
+stringstyle=\color{mymauve}\ttfamily,    
+frame=single,
+rulesepcolor=\color{red!20!green!20!blue!20},
+}
+\setlength{\parindent}{0pt} % 不换行
+\graphicspath{{img/}}
+
+\begin{document}
+
+
+\begin{titlepage}
+
+
+    % -------------------------------------------------------------------
+    % You need to edit the details here
+    % -------------------------------------------------------------------
+
+    \begin{center}
+        {\songti\zihao{-2} 浙江大学}\\[1cm]
+        {\songti\zihao{-2} 计算机组成课程设计报告}\\[1cm]
+        {\songti \zihao{-1}{\bfseries The Tank War——Only One Shot}} \\[1cm]
+        % \linespread{1.2}\huge \zihao{-1}{\bfseries Only One Shot}\\[0.5cm]
+        \linespread{1}
+        \includegraphics[width=8cm]{img/zju.png}\\[1cm]
+        \begin{center}
+            \begin{large}
+                \begin{tabular}{cc}
+                    中文题目:    & 坦克大战——最后一颗子弹      \\
+                    \cline{2-2}                                \\
+                    英文题目:    & The Tank War——Only One Shot \\
+                    \cline{2-2}                                \\
+                    学生姓名:    & 葛浩                        \\
+                    \cline{2-2}                                \\
+                    学\qquad 号: & 3180103494                  \\
+                    \cline{2-2}                                \\
+                    指导老师:    & 施青松                      \\
+                    \cline{2-2}                                \\
+                    专业类别:    & 计算机科学与技术            \\
+                    \cline{2-2}                                \\
+                    所在学院:    & 计算机科学与技术学院        \\
+                    \cline{2-2}                                \\
+                \end{tabular}
+            \end{large}
+        \end{center}
+        \LARGE\today
+    \end{center}
+
+\end{titlepage}
+
+
+% -------------------------------------------------------------------
+% Declaration
+% -------------------------------------------------------------------
+
+\newpage
+\thispagestyle{empty} %不显示页码
+
+\section*{\LARGE  Declare 申明}
+\paragraph{}
+\textit{\bfseries \songti
+    特在此声明，“Only One Shot”项目相关的所有工作均为个人独立工作成果，并没有对任何代码进行借鉴。}
+\section*{\LARGE  模块概览}
+
+\noindent  \textit{\bfseries \songti 多周期MCPU模块:} \qquad{支持18+条指令}\\[1mm]
+\rule[1em]{25em}{0.5pt}
+
+\noindent  \textit{\bfseries \songti I/O外部设备接口模块:}\quad{支持VGA、PS2的IO交互}\\[1mm]
+\rule[1em]{25em}{0.5pt}
+
+\noindent \textit{\bfseries \songti MIPS汇编软件模块:}\qquad{对tank war游戏的实现}\\[1mm]
+\rule[1em]{25em}{0.5pt}
+
+
+% -------------------------------------------------------------------
+% Abstract
+% -------------------------------------------------------------------
+
+% \input{sections/abstract.tex}
+
+
+% -------------------------------------------------------------------
+% Contents, list of figures, list of tables
+% -------------------------------------------------------------------
+
+
+\newpage
+\tableofcontents
+\thispagestyle{empty}%目录页不显示页码
+
+% -------------------------------------------------------------------
+% Main sections (as required)
+% -------------------------------------------------------------------
+
+\newpage
+\setcounter{page}{1}%从下面开始编页码
+\section{绪论}
+\input{sections/introduction.tex}
+
+\newpage
+\section{设计原理}
+\input{sections/theory.tex}
+
+\newpage
+\section{设计实现}
+\input{sections/implementation.tex}
+
+\newpage
+\section{系统测试验证与结果分析}
+\input{sections/analysis.tex}
+
+\newpage
+\section{结论与展望}
+\input{sections/conclusion.tex}
+
+% -------------------------------------------------------------------
+% Appendices
+% -------------------------------------------------------------------
+
+% \begin{appendices}
+%     \input{sections/appendix.tex}
+% \end{appendices}
+
+\newpage
+\end{document}
